@@ -1,0 +1,152 @@
+/* ============================================================
+   《议会博弈》设计 Tokens — 暗黑权谋风
+   墨色为底 · 暗金为锋 · 衬线立威 · 一色一义绝不滥用
+   ============================================================ */
+
+:root {
+  /* —— 色板 —— */
+  --ink: #0E0E10;          /* 墨黑 · 主背景 */
+  --slate: #1A1A1E;        /* 暗炭 · 卡片表面 */
+  --slate-2: #25252B;      /* 次炭 · 次级表面 */
+  --slate-3: #2E2E36;      /* 三级表面 */
+
+  --gold: #C9A961;          /* 暗金 · 全屏唯一高饱和色 */
+  --gold-dim: #8A7A4A;     /* 暗金暗调 */
+  --gold-soft: rgba(201, 169, 97, 0.1);
+
+  --crimson: #B23A3A;       /* 警示红 · 背叛 */
+  --emerald: #2E7D5B;       /* 信任绿 · 已兑现 */
+
+  --parchment: #D8CFB8;    /* 羊皮纸 · 暗底正文 */
+  --ash: #8A8A92;           /* 灰烬 · 次要文字 */
+
+  --line: rgba(201, 169, 97, 0.22);
+
+  /* —— 字体层级 —— */
+  --serif: "Georgia", "Noto Serif SC", "Source Han Serif SC", serif;
+  --sans: "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* —— 圆角 —— */
+  --radius: 8px;
+  --radius-card: 12px;
+
+  /* —— 间距 —— */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 48px;
+
+  /* —— 字号 —— */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+  --text-2xl: 30px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--sans);
+  font-size: var(--text-base);
+  line-height: 1.7;
+  background: var(--ink);
+  color: var(--parchment);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 标题用衬线体立威 */
+h1, h2, h3, .serif {
+  font-family: var(--serif);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+/* 数据用等宽体 */
+.mono, .data {
+  font-family: var(--mono);
+}
+
+/* —— 滚动条 —— */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--slate);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--gold-dim);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gold);
+}
+
+/* —— Element Plus 暗黑权谋风覆盖 —— */
+.el-button--primary {
+  --el-button-bg-color: var(--gold);
+  --el-button-border-color: var(--gold);
+  --el-button-text-color: var(--ink);
+  --el-button-hover-bg-color: var(--gold-dim);
+  --el-button-hover-border-color: var(--gold-dim);
+}
+
+.el-input__wrapper,
+.el-textarea__inner {
+  background: var(--slate-2) !important;
+  box-shadow: 0 0 0 1px var(--line) inset !important;
+  color: var(--parchment) !important;
+}
+
+.el-dialog {
+  --el-dialog-bg-color: var(--slate);
+  --el-dialog-title-font-size: var(--text-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+/* —— 工具类 —— */
+.card {
+  background: var(--slate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--space-lg);
+}
+
+.card-gold {
+  background: var(--slate);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--gold);
+  border-radius: var(--radius-card);
+  padding: var(--space-lg);
+}
+
+.tag-gold {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: var(--gold);
+  background: var(--gold-soft);
+  border: 1px solid var(--gold-dim);
+}
+
+.text-muted { color: var(--ash); }
+.text-gold { color: var(--gold); }
+.text-red { color: var(--crimson); }
+.text-green { color: var(--emerald); }
