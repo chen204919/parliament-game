@@ -43,15 +43,35 @@ async function submit() {
 
 <template>
   <div class="login-root">
+    <div class="bg-atmosphere" />
+
     <div class="login-card card-gold">
+      <div class="login-emblem" />
       <h2 class="serif">{{ isLogin ? '入会' : '注册' }}</h2>
       <p class="text-muted login-sub">议员档案 · 跨局声誉起始</p>
 
       <el-form @submit.prevent="submit" class="login-form">
-        <el-input v-model="form.name" placeholder="议员名" class="login-input" />
-        <el-input v-model="form.password" type="password" placeholder="密令" show-password class="login-input" />
+        <el-input
+          v-model="form.name"
+          placeholder="议员名"
+          class="login-input"
+          @keyup.enter="submit"
+        />
+        <el-input
+          v-model="form.password"
+          type="password"
+          placeholder="密令"
+          show-password
+          class="login-input"
+          @keyup.enter="submit"
+        />
         <p v-if="errorMsg" class="text-red login-err">{{ errorMsg }}</p>
-        <el-button type="primary" :loading="loading" @click="submit" class="login-btn">
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="submit"
+          class="login-btn"
+        >
           {{ isLogin ? '进入议会' : '提交注册' }}
         </el-button>
       </el-form>
@@ -69,11 +89,38 @@ async function submit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--ink);
+  position: relative;
+  overflow: hidden;
+}
+.bg-atmosphere {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 500px 400px at 50% 30%, rgba(201, 169, 97, 0.08), transparent),
+    radial-gradient(ellipse 400px 300px at 50% 80%, rgba(201, 169, 97, 0.04), transparent),
+    var(--ink);
+  pointer-events: none;
 }
 .login-card {
+  position: relative;
   width: 380px;
   text-align: center;
+}
+.login-emblem {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto var(--space-md);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--gold-dim), transparent 70%);
+  border: 2px solid var(--gold);
+  position: relative;
+}
+.login-emblem::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--gold-dim);
 }
 .login-sub {
   font-size: var(--text-xs);
@@ -88,15 +135,20 @@ async function submit() {
 .login-input :deep(.el-input__wrapper) {
   background: var(--slate-2);
 }
+.login-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--gold) inset, 0 0 12px rgba(201, 169, 97, 0.15) !important;
+}
 .login-btn {
   width: 100%;
   font-family: var(--serif);
+  letter-spacing: 0.04em;
 }
 .login-toggle {
   margin-top: var(--space-md);
   font-size: var(--text-sm);
   color: var(--ash);
   cursor: pointer;
+  transition: color 0.2s;
 }
 .login-toggle:hover {
   color: var(--gold);

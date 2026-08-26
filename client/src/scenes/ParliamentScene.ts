@@ -1,10 +1,10 @@
 import Phaser from 'phaser';
-import type { RoomState } from '@parliament/shared';
+import type { RoomState, GamePhase } from '@parliament/shared';
 import { getReputationColor } from '@parliament/shared';
 
 // ============================================================
 // Phaser 渲染层 — 议会桌场景
-// 程序化绘制：环形议会桌 + 议员棋子 + 状态动效
+// 程序化绘制：环形议会桌 + 议员棋子 + 投票指示 + 阶段动效
 // 与 UI 层解耦，只通过外部传入的 state 渲染
 // ============================================================
 
@@ -20,6 +20,23 @@ const COLORS = {
   ash: 0x8a8a92,
 };
 
+const PHASE_TINT: Record<GamePhase, number> = {
+  lobby: 0x1a1a1e,
+  reveal: 0x1a1a1e,
+  negotiate: 0x1a1a1e,
+  vote: 0x1e1a22,
+  settle: 0x1a1e1a,
+  finished: 0x1a1a1e,
+};
+
+const IDENTITY_COLORS: Record<string, number> = {
+  conservative: COLORS.gold,
+  radical: COLORS.crimson,
+  moderate: COLORS.emerald,
+  conspirator: COLORS.parchment,
+  agitator: COLORS.goldDim,
+};
+
 interface TokenData {
   id: string;
   name: string;
@@ -27,6 +44,7 @@ interface TokenData {
   reputation: number;
   capital: number;
   identity: string;
+  hasVoted: boolean;
 }
 
 export class ParliamentScene extends Phaser.Scene {
@@ -34,63 +52,89 @@ export class ParliamentScene extends Phaser.Scene {
   private tableCenter = { x: 480, y: 320 };
   private tableRadius = 220;
 
+  private tableOuter!: Phaser.GameObjects.Graphics;
+  private tableMain!: Phaser.GameObjects.Graphics;
+  private tableInner!: Phaser.GameObjects.Graphics;
+  private emblem!: Phaser.GameObjects.Graphics;
+  private billTitleText: Phaser.GameObjects.Text | null = null;
+  private phaseLabel: Phaser.GameObjects.Text | null = null;
+  private currentPhase: GamePhase = 'lobby';
+
   constructor() {
     super({ key: 'ParliamentScene' });
   }
 
   create() {
-    // 墨色背景
     this.cameras.main.setBackgroundColor(COLORS.ink);
-
-    // 议会桌（环形）
     this.drawTable();
-
-    // 标题
-    const titleText = this.add.text(this.tableCenter.x, 40, '议会大厅', {
-      fontFamily: 'Georgia, serif',
-      fontSize: '24px',
-      color: '#C9A961',
-    });
-    titleText.setOrigin(0.5);
+    this.drawCenterText();
   }
 
   private drawTable() {
     const { x, y } = this.tableCenter;
     const r = this.tableRadius;
 
-    // 桌面外环
-    const outer = this.add.graphics();
-    outer.fillStyle(COLORS.slate2, 1);
-    outer.fillCircle(x, y, r + 30);
+    this.tableOuter = this.add.graphics();
+    this.tableOuter.fillStyle(COLORS.slate2, 1);
+    this.tableOuter.fillCircle(x, y, r + 30);
 
-    // 桌面
-    const table = this.add.graphics();
-    table.fillStyle(COLORS.slate, 1);
-    table.fillCircle(x, y, r);
-    table.lineStyle(2, COLORS.goldDim, 1);
-    table.strokeCircle(x, y, r);
+    this.tableMain = this.add.graphics();
+    this.tableMain.fillStyle(COLORS.slate, 1);
+    this.tableMain.fillCircle(x, y, r);
+    this.tableMain.lineStyle(2, COLORS.goldDim, 1);
+    this.tableMain.strokeCircle(x, y, r);
 
-    // 桌面暗金内纹
-    const inner = this.add.graphics();
-    inner.lineStyle(1, COLORS.goldDim, 0.4);
-    inner.strokeCircle(x, y, r * 0.7);
-    inner.strokeCircle(x, y, r * 0.4);
+    this.tableInner = this.add.graphics();
+    this.tableInner.lineStyle(1, COLORS.goldDim, 0.4);
+    this.tableInner.strokeCircle(x, y, r * 0.7);
+    this.tableInner.strokeCircle(x, y, r * 0.4);
 
-    // 中央徽记
-    const emblem = this.add.graphics();
-    emblem.fillStyle(COLORS.goldDim, 0.3);
-    emblem.fillCircle(x, y, 30);
-    emblem.lineStyle(2, COLORS.gold, 1);
-    emblem.strokeCircle(x, y, 30);
+    this.emblem = this.add.graphics();
+    this.emblem.fillStyle(COLORS.goldDim, 0.3);
+    this.emblem.fillCircle(x, y, 30);
+    this.emblem.lineStyle(2, COLORS.gold, 1);
+    this.emblem.strokeCircle(x, y, 30);
+  }
+
+  private drawCenterText() {
+    const { x, y } = this.tableCenter;
+
+    this.billTitleText = this.add.text(x, y - 10, '', {
+      fontFamily: 'Georgia, serif',
+      fontSize: '16px',
+      color: '#C9A961',
+      align: 'center',
+      wordWrap: { width: 260 },
+    });
+    this.billTitleText.setOrigin(0.5);
+    this.billTitleText.setAlpha(0);
+
+    this.phaseLabel = this.add.text(x, y + 20, '议会大厅', {
+      fontFamily: 'Georgia, serif',
+      fontSize: '12px',
+      color: '#8A8A92',
+    });
+    this.phaseLabel.setOrigin(0.5);
   }
 
   /** 根据房间状态更新议员棋子 */
   syncState(state: RoomState) {
+    const phaseChanged = state.phase !== this.currentPhase;
+    this.currentPhase = state.phase;
+
+    if (phaseChanged) {
+      this.updatePhaseVisuals(state.phase, state.currentBill?.title ?? null);
+    } else if (state.currentBill && this.billTitleText) {
+      const title = state.currentBill.title;
+      if (this.billTitleText.text !== title) {
+        this.billTitleText.setText(title);
+      }
+    }
+
     const players = state.players;
     const count = players.length;
     if (count === 0) return;
 
-    // 移除已离开的议员
     const currentIds = new Set(players.map((p) => p.id));
     for (const [id, token] of this.tokens) {
       if (!currentIds.has(id)) {
@@ -106,11 +150,10 @@ export class ParliamentScene extends Phaser.Scene {
 
       let token = this.tokens.get(player.id);
       if (!token) {
-        token = this.createToken(player, px, py);
+        token = this.createToken(player as TokenData, px, py);
         this.tokens.set(player.id, token);
       }
 
-      // 更新位置（平滑移动）
       this.tweens.add({
         targets: token,
         x: px,
@@ -119,34 +162,63 @@ export class ParliamentScene extends Phaser.Scene {
         ease: 'Power2',
       });
 
-      this.updateToken(token, player, state);
+      this.updateToken(token, player as TokenData, state);
     });
+  }
+
+  private updatePhaseVisuals(phase: GamePhase, billTitle: string | null) {
+    const tint = PHASE_TINT[phase] ?? COLORS.slate;
+
+    this.tableMain.clear();
+    this.tableMain.fillStyle(tint, 1);
+    this.tableMain.fillCircle(this.tableCenter.x, this.tableCenter.y, this.tableRadius);
+    this.tableMain.lineStyle(2, COLORS.goldDim, 1);
+    this.tableMain.strokeCircle(this.tableCenter.x, this.tableCenter.y, this.tableRadius);
+
+    const phaseLabels: Record<string, string> = {
+      lobby: '议会大厅',
+      reveal: '议案揭示',
+      negotiate: '谈判阶段',
+      vote: '投票表决',
+      settle: '结算阶段',
+      finished: '终局',
+    };
+    this.phaseLabel?.setText(phaseLabels[phase] ?? phase);
+
+    if (billTitle && this.billTitleText) {
+      this.billTitleText.setText(billTitle);
+      this.tweens.add({
+        targets: this.billTitleText,
+        alpha: 0.9,
+        duration: 600,
+        ease: 'Power2',
+      });
+      this.emblem.setAlpha(0.15);
+    } else if (this.billTitleText) {
+      this.tweens.add({
+        targets: this.billTitleText,
+        alpha: 0,
+        duration: 300,
+        ease: 'Power2',
+      });
+      this.emblem.setAlpha(1);
+    }
   }
 
   private createToken(data: TokenData, x: number, y: number): Phaser.GameObjects.Container {
     const container = this.add.container(x, y);
 
-    // 棋子底盘
     const base = this.add.graphics();
     base.fillStyle(COLORS.slate2, 1);
     base.fillCircle(0, 0, 42);
     base.lineStyle(2, COLORS.goldDim, 1);
     base.strokeCircle(0, 0, 42);
 
-    // 头像（几何形状 + 身份色）
     const avatar = this.add.graphics();
-    const identityColors: Record<string, number> = {
-      conservative: COLORS.gold,
-      radical: COLORS.crimson,
-      moderate: COLORS.emerald,
-      conspirator: COLORS.parchment,
-      agitator: COLORS.goldDim,
-    };
-    const idColor = identityColors[data.identity] ?? COLORS.gold;
+    const idColor = IDENTITY_COLORS[data.identity] ?? COLORS.gold;
     avatar.fillStyle(idColor, 0.8);
     avatar.fillCircle(0, -4, 22);
 
-    // 名称
     const nameText = this.add.text(0, 38, data.name, {
       fontFamily: 'Georgia, serif',
       fontSize: '13px',
@@ -154,7 +226,6 @@ export class ParliamentScene extends Phaser.Scene {
     });
     nameText.setOrigin(0.5);
 
-    // 资本
     const capitalText = this.add.text(0, 56, `+${data.capital}`, {
       fontFamily: 'JetBrains Mono, monospace',
       fontSize: '14px',
@@ -162,19 +233,21 @@ export class ParliamentScene extends Phaser.Scene {
     });
     capitalText.setOrigin(0.5);
 
-    // 声誉条背景
     const repBg = this.add.graphics();
     repBg.fillStyle(COLORS.slate2, 1);
     repBg.fillRoundedRect(-28, 72, 56, 4, 2);
 
-    // 声誉条填充
     const repBar = this.add.graphics();
 
-    container.add([base, avatar, nameText, capitalText, repBg, repBar]);
+    const voteDot = this.add.graphics();
+    voteDot.setAlpha(0);
 
-    // 存储引用
+    container.add([base, avatar, nameText, capitalText, repBg, repBar, voteDot]);
+
     container.setData('capitalText', capitalText);
     container.setData('repBar', repBar);
+    container.setData('voteDot', voteDot);
+    container.setData('base', base);
 
     return container;
   }
@@ -182,14 +255,15 @@ export class ParliamentScene extends Phaser.Scene {
   private updateToken(
     token: Phaser.GameObjects.Container,
     player: TokenData,
-    state: RoomState,
+    _state: RoomState,
   ) {
     const capitalText = token.getData('capitalText') as Phaser.GameObjects.Text;
     const repBar = token.getData('repBar') as Phaser.GameObjects.Graphics;
+    const voteDot = token.getData('voteDot') as Phaser.GameObjects.Graphics;
+    const base = token.getData('base') as Phaser.GameObjects.Graphics;
 
     capitalText.setText(`+${player.capital}`);
 
-    // 重绘声誉条
     repBar.clear();
     const repColor = Phaser.Display.Color.HexStringToColor(
       getReputationColor(player.reputation),
@@ -197,6 +271,34 @@ export class ParliamentScene extends Phaser.Scene {
     const width = 56 * player.reputation;
     repBar.fillStyle(repColor, 1);
     repBar.fillRoundedRect(-28, 72, width, 4, 2);
+
+    // 投票指示器
+    voteDot.clear();
+    if (player.hasVoted) {
+      voteDot.fillStyle(COLORS.gold, 1);
+      voteDot.fillCircle(30, -30, 6);
+      voteDot.lineStyle(2, COLORS.ink, 1);
+      voteDot.strokeCircle(30, -30, 6);
+      voteDot.setAlpha(1);
+
+      // 弹出动画
+      this.tweens.add({
+        targets: voteDot,
+        scaleX: { from: 0, to: 1 },
+        scaleY: { from: 0, to: 1 },
+        duration: 300,
+        ease: 'Back.easeOut',
+      });
+    } else {
+      voteDot.setAlpha(0);
+    }
+
+    // 当前玩家高亮
+    base.clear();
+    base.fillStyle(COLORS.slate2, 1);
+    base.fillCircle(0, 0, 42);
+    base.lineStyle(2, COLORS.gold, 1);
+    base.strokeCircle(0, 0, 42);
   }
 }
 

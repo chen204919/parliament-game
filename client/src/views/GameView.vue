@@ -34,9 +34,46 @@ const voteChoice = ref<'yea' | 'nay' | 'abstain' | ''>('');
 // 计算属性
 const phase = computed(() => gameStore.phase);
 const isLobby = computed(() => phase.value === 'lobby');
+const isReveal = computed(() => phase.value === 'reveal');
 const isNegotiate = computed(() => phase.value === 'negotiate');
 const isVote = computed(() => phase.value === 'vote');
+const isSettle = computed(() => phase.value === 'settle');
 const isFinished = computed(() => phase.value === 'finished');
+
+const latestResult = computed(() => {
+  const results = gameStore.roomState?.results ?? [];
+  return results.length > 0 ? results[results.length - 1] : null;
+});
+
+const voteStats = computed(() => {
+  const votes = latestResult.value?.votes ?? [];
+  return {
+    yea: votes.filter((v) => v.choice === 'yea').length,
+    nay: votes.filter((v) => v.choice === 'nay').length,
+    abstain: votes.filter((v) => v.choice === 'abstain').length,
+    total: votes.length,
+  };
+});
+
+const billTypeLabel = computed(() => {
+  const type = gameStore.currentBill?.type ?? 'allocation';
+  const labels: Record<string, string> = {
+    'allocation': '资源分配',
+    'prisoners': '囚徒困境',
+    'auction': '拍卖竞价',
+    'public-goods': '公共基金',
+    'voting-paradox': '投票悖论',
+    'amendment': '修正案',
+  };
+  return labels[type] ?? type;
+});
+
+const myAllocation = computed(() => {
+  const bill = gameStore.currentBill;
+  if (!bill) return 0;
+  const alloc = bill.allocations.find((a) => a.playerId === gameStore.playerId);
+  return alloc?.percentage ?? 0;
+});
 
 const otherPlayers = computed(() =>
   gameStore.players.filter((p) => p.id !== gameStore.playerId),
@@ -226,7 +263,10 @@ function getRepColor(rep: number) {
         <div class="battle-right">
           <!-- 议案卡 -->
           <div v-if="gameStore.currentBill" class="bill-card card">
-            <h4 class="serif text-gold">议案 #{{ gameStore.currentBill.index + 1 }}</h4>
+            <div class="bill-card-header">
+              <h4 class="serif text-gold">议案 #{{ gameStore.currentBill.index + 1 }}</h4>
+              <span class="bill-type-badge">{{ billTypeLabel }}</span>
+            </div>
             <p class="bill-title">{{ gameStore.currentBill.title }}</p>
             <p class="text-muted bill-desc">{{ gameStore.currentBill.description }}</p>
             <div class="bill-allocations">
@@ -234,9 +274,71 @@ function getRepColor(rep: number) {
                 v-for="alloc in gameStore.currentBill.allocations"
                 :key="alloc.playerId"
                 class="alloc-row"
+                :class="{ me: alloc.playerId === gameStore.playerId }"
               >
-                <span>{{ gameStore.players.find((p) => p.id === alloc.playerId)?.name }}</span>
-                <b class="text-gold mono">{{ alloc.percentage }}%</b>
+                <span class="alloc-name">{{ gameStore.players.find((p) => p.id === alloc.playerId)?.name ?? '?' }}</span>
+                <div class="alloc-bar-track">
+                  <div class="alloc-bar-fill" :style="{ width: `${alloc.percentage * 2}%` }" />
+                  <span class="alloc-bar-pct mono">{{ alloc.percentage }}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 揭示阶段面板 -->
+          <div v-if="isReveal" class="reveal-panel card">
+            <div class="reveal-scroll">
+              <div class="reveal-glow" />
+              <h3 class="serif reveal-title">议案揭示</h3>
+              <p class="text-muted reveal-hint">阅读议案 · 谈判即将开始</p>
+              <div class="reveal-my-share">
+                <span class="text-muted">我的分配</span>
+                <b class="text-gold mono reveal-share-num">{{ myAllocation }}%</b>
+              </div>
+            </div>
+          </div>
+
+          <!-- 结算阶段面板 -->
+          <div v-if="isSettle && latestResult" class="settle-panel card">
+            <div class="settle-stamp" :class="{ passed: latestResult.passed, rejected: !latestResult.passed }">
+              {{ latestResult.passed ? '议案通过' : '议案否决' }}
+            </div>
+
+            <div class="settle-votes">
+              <div class="vote-tally yea">
+                <span class="tally-num mono">{{ voteStats.yea }}</span>
+                <span class="tally-label">赞成</span>
+              </div>
+              <div class="vote-tally nay">
+                <span class="tally-num mono">{{ voteStats.nay }}</span>
+                <span class="tally-label">反对</span>
+              </div>
+              <div class="vote-tally abstain">
+                <span class="tally-num mono">{{ voteStats.abstain }}</span>
+                <span class="tally-label">弃权</span>
+              </div>
+            </div>
+
+            <div class="vote-bar-track">
+              <div class="vote-bar-yea" :style="{ width: `${(voteStats.yea / voteStats.total) * 100}%` }" />
+              <div class="vote-bar-nay" :style="{ width: `${(voteStats.nay / voteStats.total) * 100}%` }" />
+              <div class="vote-bar-abstain" :style="{ width: `${(voteStats.abstain / voteStats.total) * 100}%` }" />
+            </div>
+
+            <div class="settle-changes">
+              <div
+                v-for="p in gameStore.players"
+                :key="p.id"
+                class="change-row"
+                :class="{ me: p.id === gameStore.playerId }"
+              >
+                <span class="change-name serif">{{ p.name }}</span>
+                <span class="change-cap mono" :class="(latestResult.capitalChanges[p.id] ?? 0) >= 0 ? 'text-green' : 'text-red'">
+                  {{ (latestResult.capitalChanges[p.id] ?? 0) >= 0 ? '+' : '' }}{{ latestResult.capitalChanges[p.id] ?? 0 }}
+                </span>
+                <span class="change-rep mono text-muted">
+                  {{ (latestResult.reputationChanges[p.id] ?? 0) >= 0 ? '+' : '' }}{{ ((latestResult.reputationChanges[p.id] ?? 0) * 100).toFixed(1) }}%
+                </span>
               </div>
             </div>
           </div>
@@ -551,20 +653,184 @@ function getRepColor(rep: number) {
 .bill-card {
   padding: var(--space-md);
 }
+.bill-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.bill-type-badge {
+  font-size: var(--text-xs);
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: var(--gold);
+  background: var(--gold-soft);
+  border: 1px solid var(--gold-dim);
+}
 .bill-title { font-size: var(--text-base); color: var(--parchment); margin: var(--space-xs) 0; }
 .bill-desc { font-size: var(--text-sm); }
 .bill-allocations {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
   margin-top: var(--space-sm);
 }
 .alloc-row {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
   font-size: var(--text-sm);
   color: var(--parchment);
 }
+.alloc-row.me .alloc-name { color: var(--gold); font-weight: 600; }
+.alloc-name { min-width: 50px; text-align: right; }
+.alloc-bar-track {
+  flex: 1;
+  height: 20px;
+  background: var(--slate-2);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+}
+.alloc-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+  border-radius: var(--radius);
+  transition: width 0.5s ease;
+}
+.alloc-bar-pct {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--text-xs);
+  color: var(--parchment);
+}
+
+/* 揭示阶段面板 */
+.reveal-panel {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--gold-dim);
+}
+.reveal-scroll {
+  position: relative;
+  padding: var(--space-lg) var(--space-md);
+  text-align: center;
+  background: radial-gradient(ellipse at center, rgba(201, 169, 97, 0.08) 0%, transparent 70%);
+}
+.reveal-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 40%, rgba(201, 169, 97, 0.15), transparent 60%);
+  animation: reveal-pulse 2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes reveal-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+.reveal-title {
+  font-size: var(--text-xl);
+  position: relative;
+}
+.reveal-hint {
+  font-size: var(--text-xs);
+  position: relative;
+}
+.reveal-my-share {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  position: relative;
+}
+.reveal-share-num {
+  font-size: var(--text-2xl);
+}
+
+/* 结算阶段面板 */
+.settle-panel {
+  padding: var(--space-md);
+  text-align: center;
+}
+.settle-stamp {
+  display: inline-block;
+  font-family: var(--serif);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  padding: var(--space-xs) var(--space-lg);
+  border-radius: var(--radius);
+  border: 2px solid;
+  letter-spacing: 0.1em;
+  transform: rotate(-3deg);
+}
+.settle-stamp.passed {
+  color: var(--emerald);
+  border-color: var(--emerald);
+  background: rgba(46, 125, 91, 0.1);
+}
+.settle-stamp.rejected {
+  color: var(--crimson);
+  border-color: var(--crimson);
+  background: rgba(178, 58, 58, 0.1);
+}
+.settle-votes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+  margin: var(--space-md) 0;
+}
+.vote-tally {
+  padding: var(--space-sm);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.vote-tally.yea { border-color: rgba(46, 125, 91, 0.3); background: rgba(46, 125, 91, 0.08); }
+.vote-tally.nay { border-color: rgba(178, 58, 58, 0.3); background: rgba(178, 58, 58, 0.08); }
+.vote-tally.abstain { border-color: rgba(255, 255, 255, 0.08); }
+.tally-num {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  display: block;
+}
+.tally-label {
+  font-size: var(--text-xs);
+  color: var(--ash);
+}
+.vote-bar-track {
+  display: flex;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--slate-2);
+  margin-bottom: var(--space-md);
+}
+.vote-bar-yea { background: var(--emerald); }
+.vote-bar-nay { background: var(--crimson); }
+.vote-bar-abstain { background: var(--slate-3); }
+.settle-changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.change-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 60px;
+  gap: var(--space-sm);
+  align-items: center;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+.change-row.me {
+  background: var(--gold-soft);
+  border: 1px solid var(--gold-dim);
+}
+.change-name { color: var(--parchment); }
+.change-cap { text-align: right; font-weight: 600; }
+.change-rep { text-align: right; font-size: var(--text-xs); }
 
 /* 谈判 */
 .negotiate-panel {
